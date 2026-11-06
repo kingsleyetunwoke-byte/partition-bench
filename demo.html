@@ -1,0 +1,370 @@
+<title>partition-bench</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a lab-notebook column; the counterexample player breaks wider as the centrepiece. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #17202c;
+  --muted: #5a6677;
+  --rule: #d6dce5;
+  --accent: #2f55d4;
+  --accent-soft: #e4eafc;
+  --ok: #1f7a4d;
+  --ok-soft: #dcf1e6;
+  --bad: #c2362b;
+  --bad-soft: #fbe3e0;
+  --warn: #a8660b;
+  --warn-soft: #f9ecd6;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Public Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161e; --surface: #18202b; --ink: #e6ebf2; --muted: #96a2b4; --rule: #2a3442;
+    --accent: #87a3ff; --accent-soft: #1f2b4d; --ok: #5fcf96; --ok-soft: #173326;
+    --bad: #ff8478; --bad-soft: #3d1c1a; --warn: #f0b45a; --warn-soft: #3a2a12;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161e; --surface: #18202b; --ink: #e6ebf2; --muted: #96a2b4; --rule: #2a3442;
+  --accent: #87a3ff; --accent-soft: #1f2b4d; --ok: #5fcf96; --ok-soft: #173326;
+  --bad: #ff8478; --bad-soft: #3d1c1a; --warn: #f0b45a; --warn-soft: #3a2a12;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 16px/1.6 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 64px;
+}
+main { max-width: 1080px; margin: 0 auto; display: grid; gap: 56px; }
+.prose { max-width: 68ch; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); font-weight: 700; letter-spacing: -0.02em; }
+h2 { font-size: 1.6rem; font-weight: 700; }
+h3 { font-size: 1.05rem; font-weight: 600; font-family: var(--body); }
+p { margin: 0; }
+section { display: grid; gap: 18px; }
+.eyebrow { font: 600 0.75rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.lede { font-size: 1.15rem; color: var(--muted); max-width: 62ch; }
+code, .mono { font-family: var(--mono); font-size: 0.88em; }
+header { display: grid; gap: 16px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--muted); font-size: 0.9rem; }
+.meta span b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Results */
+.results { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 20px; display: grid; gap: 14px; overflow-x: auto; }
+.row { display: grid; grid-template-columns: minmax(150px, 230px) 1fr 92px; gap: 14px; align-items: center; min-width: 520px; }
+.row .name { font-family: var(--mono); font-size: 0.82rem; }
+.row .name small { display: block; color: var(--muted); font-family: var(--body); font-size: 0.78rem; }
+.track { position: relative; height: 22px; background: linear-gradient(to right, var(--rule) 1px, transparent 1px) 0 0 / 25% 100%, var(--bg); border-radius: 3px; overflow: hidden; display: flex; }
+.seg-safety { background: var(--bad); }
+.seg-liveness { background: var(--warn); }
+.count { font: 600 0.85rem var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.count.zero { color: var(--ok); }
+.axis { display: grid; grid-template-columns: minmax(150px, 230px) 1fr 92px; gap: 14px; min-width: 520px; }
+.axis .ticks { display: flex; justify-content: space-between; font: 0.72rem var(--mono); color: var(--muted); }
+.legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
+
+/* Player */
+.player { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; display: grid; }
+.tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--rule); }
+.tab { flex: 1 1 200px; text-align: left; background: none; border: 0; border-bottom: 3px solid transparent; padding: 14px 18px; cursor: pointer; color: var(--muted); font: inherit; display: grid; gap: 2px; }
+.tab b { color: var(--ink); font-weight: 600; font-size: 0.95rem; }
+.tab span { font-size: 0.8rem; }
+.tab[aria-selected="true"] { border-bottom-color: var(--accent); background: var(--accent-soft); }
+.tab:focus-visible, .ctrl:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.case-intro { padding: 16px 18px 0; color: var(--muted); font-size: 0.95rem; max-width: 80ch; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 18px; }
+.ctrl { font: 600 0.85rem var(--body); border: 1px solid var(--rule); background: var(--bg); color: var(--ink); border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+.ctrl.primary { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+#scrub { flex: 1 1 160px; accent-color: var(--accent); }
+.stepno { font: 0.82rem var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 9ch; text-align: right; }
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); border-top: 1px solid var(--rule); }
+.log { margin: 0; padding: 14px 0; list-style: none; font: 0.8rem/1.5 var(--mono); max-height: 440px; overflow-y: auto; border-right: 1px solid var(--rule); }
+.log li { padding: 2px 18px; color: var(--muted); cursor: pointer; }
+.log li.adv { color: var(--accent); }
+.log li.past { color: var(--ink); }
+.log li.now { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.log li.future { opacity: 0.45; }
+.log li.fail { color: var(--bad); }
+.state { padding: 18px; display: grid; gap: 18px; align-content: start; min-width: 0; }
+.label { font: 600 0.7rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.workers { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.worker { border: 1px solid var(--rule); border-radius: 8px; padding: 10px 12px; display: grid; gap: 8px; }
+.worker.off { border-style: dashed; }
+.whead { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.whead b { font-family: var(--mono); }
+.whead span { font: 0.72rem var(--mono); color: var(--muted); }
+.pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.pill { font: 600 0.68rem/1 var(--mono); padding: 4px 6px; border-radius: 999px; background: var(--bg); color: var(--muted); }
+.pill.on { background: var(--ok-soft); color: var(--ok); }
+.pill.off { background: var(--bad-soft); color: var(--bad); }
+.pill.wait { background: var(--warn-soft); color: var(--warn); }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 26px; }
+.chip { font: 600 0.75rem/1 var(--mono); padding: 6px 7px; border-radius: 4px; background: var(--ok-soft); color: var(--ok); }
+.chip.bad { background: var(--bad); color: var(--surface); }
+.none { font-size: 0.78rem; color: var(--muted); }
+.locks { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.lock { border: 1px solid var(--rule); border-radius: 6px; padding: 8px 4px; text-align: center; display: grid; gap: 4px; }
+.lock .p { font: 600 0.8rem var(--mono); }
+.lock .o { font: 0.72rem var(--mono); color: var(--muted); }
+.lock.held { background: var(--accent-soft); border-color: var(--accent); }
+.lock.held .o { color: var(--accent); }
+.verdict { margin: 0 18px 18px; padding: 12px 14px; border-radius: 8px; font-size: 0.92rem; }
+.verdict.bad { background: var(--bad-soft); color: var(--bad); }
+.verdict.info { background: var(--bg); color: var(--muted); }
+
+/* Findings */
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px 32px; }
+.finding { display: grid; gap: 6px; align-content: start; }
+.finding p { color: var(--muted); font-size: 0.95rem; }
+.tag { font: 600 0.72rem var(--mono); }
+.tag.bad { color: var(--bad); } .tag.warn { color: var(--warn); } .tag.ok { color: var(--ok); }
+pre.code { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font: 0.82rem/1.6 var(--mono); margin: 0; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+.cols > * { min-width: 0; }
+ul.plain { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; color: var(--muted); }
+ul.plain b { color: var(--ink); font-weight: 600; }
+footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--rule); padding-top: 18px; }
+
+@media (max-width: 720px) {
+  .stage { grid-template-columns: 1fr; }
+  .log { border-right: 0; border-bottom: 1px solid var(--rule); max-height: 260px; }
+  .locks { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lock, .chip, .log li { transition: background-color 160ms ease, color 160ms ease; }
+}
+</style>
+
+<main>
+  <header>
+    <span class="eyebrow">Concurrency testing · ZooKeeper recipes</span>
+    <h1>partition-bench</h1>
+    <p class="lede">A schedule explorer for distributed partition assignment. It searches interleavings of lock acquisition, membership callbacks, disconnects and session expiry, checks that no partition ever has two owners, and shrinks every failure to a trace short enough to read.</p>
+    <div class="meta">
+      <span><b>12,000</b> schedules run</span>
+      <span><b>6</b> implementations compared</span>
+      <span>Pure Python, no dependencies</span>
+      <span>Built on work in kazoo's <code>SetPartitioner</code></span>
+    </div>
+  </header>
+
+  <section aria-labelledby="results-h">
+    <span class="eyebrow">Results</span>
+    <h2 id="results-h">Failed schedules out of 2,000 random runs</h2>
+    <p class="prose" style="color:var(--muted)">Each run starts three workers sharing six partitions and lets a seeded scheduler interleave every step, with up to six faults injected. Safety is checked after every step. Liveness is checked after the system heals.</p>
+    <div class="results" id="results"></div>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--bad)"></i>Safety: a partition processed without its lock</span>
+      <span><i class="swatch" style="background:var(--warn)"></i>Liveness: workers never settle</span>
+    </div>
+  </section>
+
+  <section aria-labelledby="player-h">
+    <span class="eyebrow">Counterexamples</span>
+    <h2 id="player-h">Replay the shrunk failures</h2>
+    <p class="prose" style="color:var(--muted)">These are the actual minimal schedules the shrinker produced, exported step by step. Use the arrow keys or click any line of the log.</p>
+    <div class="player">
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <p class="case-intro" id="intro"></p>
+      <div class="controls">
+        <button class="ctrl" id="prev" type="button">Back</button>
+        <button class="ctrl primary" id="play" type="button">Play</button>
+        <button class="ctrl" id="next" type="button">Step</button>
+        <input type="range" id="scrub" min="0" value="0" aria-label="Step">
+        <span class="stepno" id="stepno"></span>
+      </div>
+      <div class="stage">
+        <ol class="log" id="log"></ol>
+        <div class="state">
+          <div><div class="label">Workers · partitions they are processing</div></div>
+          <div class="workers" id="workers"></div>
+          <div class="label">Coordinator lock table</div>
+          <div class="locks" id="locks"></div>
+        </div>
+      </div>
+      <div class="verdict info" id="verdict"></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="find-h">
+    <span class="eyebrow">What the ablations show</span>
+    <h2 id="find-h">Which guards carry the weight</h2>
+    <div class="findings">
+      <div class="finding"><span class="tag bad">naive · 2-step safety bug</span><h3>Tentative locks must belong to one attempt</h3><p>With a shared lock list, a stale attempt that returns late from a blocking acquire rolls back the newer attempt's locks. The newer attempt then processes partitions it no longer holds.</p></div>
+      <div class="finding"><span class="tag warn">no wait check · 52% deadlock</span><h3>Waiting attempts must notice they are stale</h3><p>An attempt planned from an old membership snapshot waits forever on a partition that now belongs to someone else, while holding locks the current attempt needs.</p></div>
+      <div class="finding"><span class="tag bad">no connection checks · 0.8% of runs</span><h3>The commit must check the session</h3><p>A worker whose session expired can still publish ownership. Random testing hits this in under 1% of runs, and the shrinker turns it into a 13-step trace.</p></div>
+      <div class="finding"><span class="tag ok">two ablations · 0 failures</span><h3>Some guards are redundant here</h3><p>Fencing on disconnect and checking queued notifications never mattered once the commit checks connectivity atomically. In the real client they still matter, because commit and connection state are not atomic without an added lock.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="how-h">
+    <span class="eyebrow">How it works</span>
+    <h2 id="how-h">A model you can search</h2>
+    <div class="cols">
+      <ul class="plain">
+        <li><b>Coordinator.</b> Membership as sessions, locks owned by a session and lock object. An expired session loses its locks.</li>
+        <li><b>Workers.</b> Each allocation attempt is a generator. Every <code>yield</code> is a point where another step can run.</li>
+        <li><b>Receipt and delivery.</b> A membership change is received before its callback runs. Most of the races live in that gap.</li>
+        <li><b>Shrinking.</b> A schedule is a list of choices. The shrinker deletes and lowers choices while the same kind of failure still happens.</li>
+      </ul>
+      <pre class="code">$ python3 -m pbench --impl naive --seeds 2000
+== naive: 1164/2000 schedules failed
+   safety, seed 1: 300 choices shrunk to 2
+   safety: w2 processes p2 without holding its lock
+
+&gt;&gt;&gt; from pbench.explore import run
+&gt;&gt;&gt; run("naive", prefix=[1, 1]).kind
+'safety'</pre>
+    </div>
+    <p class="prose" style="color:var(--muted)">Next steps: bounded exhaustive search with partial-order reduction so that zero failures becomes a proof for the bound, driving the real kazoo recipe through a controllable handler, and using the explorer to grade AI-written patches instead of a fixed test suite that can be overfit.</p>
+  </section>
+
+  <footer>Every number and trace on this page comes from running <code>pbench</code> (2,000 seeds per implementation, contiguous strategy). Random search finds bugs. It does not prove their absence.</footer>
+</main>
+
+<script>
+const DATA = {"cases": {"naive-safety": {"impl": "naive", "seed": 1, "original": 300, "choices": [1, 1], "violation": "safety: w2 processes p2 without holding its lock", "frames": [{"lines": ["w2 g1 plans [2, 3] from ['w1', 'w2', 'w3']"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {}}, {"lines": ["w2 g1 locked p2"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {"2": {"w": "w2", "token": 1}}}, {"lines": ["-- heal: reconnect everyone, deliver all callbacks"], "marker": true}, {"lines": ["-- deliver w1"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {"2": {"w": "w2", "token": 1}}}, {"lines": ["-- deliver w2"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {}}, {"lines": ["w2 g2 plans [2, 3] from ['w1', 'w2', 'w3']"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {}}, {"lines": ["w1 g2 plans [0, 1] from ['w1', 'w2', 'w3']"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {}}, {"lines": ["w3 g1 plans [4, 5] from ['w1', 'w2', 'w3']"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {}}, {"lines": ["w2 g1 locked p3"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {"3": {"w": "w2", "token": 1}}}, {"lines": ["w2 g2 locked p2"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {"3": {"w": "w2", "token": 1}, "2": {"w": "w2", "token": 2}}}, {"lines": ["w1 g2 locked p0"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {"3": {"w": "w2", "token": 1}, "2": {"w": "w2", "token": 2}, "0": {"w": "w1", "token": 3}}}, {"lines": ["w3 g1 locked p4"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {"3": {"w": "w2", "token": 1}, "2": {"w": "w2", "token": 2}, "0": {"w": "w1", "token": 3}, "4": {"w": "w3", "token": 4}}}, {"lines": ["w2 g1 stale, releasing 2 locks"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 3}, "4": {"w": "w3", "token": 4}}}, {"lines": ["w2 g2 locked p3"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 3}, "4": {"w": "w3", "token": 4}, "3": {"w": "w2", "token": 2}}}, {"lines": ["w1 g2 locked p1"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 3}, "4": {"w": "w3", "token": 4}, "3": {"w": "w2", "token": 2}, "1": {"w": "w1", "token": 3}}}, {"lines": ["w3 g1 locked p5"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 3}, "4": {"w": "w3", "token": 4}, "3": {"w": "w2", "token": 2}, "1": {"w": "w1", "token": 3}, "5": {"w": "w3", "token": 4}}}, {"lines": ["w2 g2 publishes [2, 3]"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": [2, 3]}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 3}, "4": {"w": "w3", "token": 4}, "3": {"w": "w2", "token": 2}, "1": {"w": "w1", "token": 3}, "5": {"w": "w3", "token": 4}}}, {"lines": ["w1 g2 publishes [0, 1]"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": [0, 1]}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": [2, 3]}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 3}, "4": {"w": "w3", "token": 4}, "3": {"w": "w2", "token": 2}, "1": {"w": "w1", "token": 3}, "5": {"w": "w3", "token": 4}}}, {"lines": ["w3 g1 publishes [4, 5]"], "violation": "safety: w2 processes p2 without holding its lock", "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": [0, 1]}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": [2, 3]}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": [4, 5]}], "locks": {"0": {"w": "w1", "token": 3}, "4": {"w": "w3", "token": 4}, "3": {"w": "w2", "token": 2}, "1": {"w": "w1", "token": 3}, "5": {"w": "w3", "token": 4}}}]}, "naive-liveness": {"impl": "naive", "seed": 0, "original": 300, "choices": [6, 6, 0], "violation": "liveness: workers never settled on the expected shares", "frames": [{"lines": ["-- disconnect w2"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}, {"id": "w2", "connected": false, "alive": true, "gen": 1, "pending": true, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {}}, {"lines": ["-- expire w2", "w2 session expires"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}, {"id": "w2", "connected": false, "alive": false, "gen": 1, "pending": true, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}], "locks": {}}, {"lines": ["w1 g1 plans [0, 1, 2] from ['w1', 'w3']"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}, {"id": "w2", "connected": false, "alive": false, "gen": 1, "pending": true, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}], "locks": {}}, {"lines": ["-- heal: reconnect everyone, deliver all callbacks"], "marker": true}, {"lines": ["-- reconnect w2"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": true, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}], "locks": {}}, {"lines": ["-- deliver w1"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": true, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}], "locks": {}}, {"lines": ["-- deliver w2"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}], "locks": {}}, {"lines": ["-- deliver w3"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {}}, {"lines": ["w3 g2 plans [4, 5] from ['w1', 'w2', 'w3']"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {}}, {"lines": ["w2 g3 plans [2, 3] from ['w1', 'w2', 'w3']"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {}}, {"lines": ["w1 g2 plans [0, 1] from ['w1', 'w2', 'w3']"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {}}, {"lines": ["w1 g1 locked p0"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 1}}}, {"lines": ["w3 g2 locked p4"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 1}, "4": {"w": "w3", "token": 2}}}, {"lines": ["w2 g3 locked p2"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 1}, "4": {"w": "w3", "token": 2}, "2": {"w": "w2", "token": 3}}}, {"lines": ["w1 g1 locked p1"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 1}, "4": {"w": "w3", "token": 2}, "2": {"w": "w2", "token": 3}, "1": {"w": "w1", "token": 1}}}, {"lines": ["w3 g2 locked p5"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 1}, "4": {"w": "w3", "token": 2}, "2": {"w": "w2", "token": 3}, "1": {"w": "w1", "token": 1}, "5": {"w": "w3", "token": 2}}}, {"lines": ["w2 g3 locked p3"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 1}, "4": {"w": "w3", "token": 2}, "2": {"w": "w2", "token": 3}, "1": {"w": "w1", "token": 1}, "5": {"w": "w3", "token": 2}, "3": {"w": "w2", "token": 3}}}, {"lines": ["w3 g2 publishes [4, 5]"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": [4, 5]}], "locks": {"0": {"w": "w1", "token": 1}, "4": {"w": "w3", "token": 2}, "2": {"w": "w2", "token": 3}, "1": {"w": "w1", "token": 1}, "5": {"w": "w3", "token": 2}, "3": {"w": "w2", "token": 3}}}, {"lines": ["w2 g3 publishes [2, 3]"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": [2, 3]}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": [4, 5]}], "locks": {"0": {"w": "w1", "token": 1}, "4": {"w": "w3", "token": 2}, "2": {"w": "w2", "token": 3}, "1": {"w": "w1", "token": 1}, "5": {"w": "w3", "token": 2}, "3": {"w": "w2", "token": 3}}}, {"lines": [], "violation": "liveness: workers never settled on the expected shares", "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 3, "pending": false, "published": [2, 3]}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": [4, 5]}], "locks": {"0": {"w": "w1", "token": 1}, "4": {"w": "w3", "token": 2}, "2": {"w": "w2", "token": 3}, "1": {"w": "w1", "token": 1}, "5": {"w": "w3", "token": 2}, "3": {"w": "w2", "token": 3}}}]}, "no-connection-checks": {"impl": "fenced-no-connection-checks", "seed": 60, "original": 22, "choices": [4, 4, 4, 7, 7, 0, 0, 2, 2, 0, 3, 4, 1], "violation": "safety: w1 processes p0 without holding its lock", "frames": [{"lines": ["-- deliver w2"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 1, "pending": true, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {}}, {"lines": ["-- deliver w1"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {}}, {"lines": ["w1 g2 plans [0, 1] from ['w1', 'w2', 'w3']"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {}}, {"lines": ["-- disconnect w3"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": false, "alive": true, "gen": 1, "pending": false, "published": []}], "locks": {}}, {"lines": ["-- reconnect w3"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {}}, {"lines": ["w1 g2 locked p0"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 1}}}, {"lines": ["w1 g2 locked p1"], "violation": null, "workers": [{"id": "w1", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 1}, "1": {"w": "w1", "token": 1}}}, {"lines": ["-- disconnect w1"], "violation": null, "workers": [{"id": "w1", "connected": false, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": false, "published": []}], "locks": {"0": {"w": "w1", "token": 1}, "1": {"w": "w1", "token": 1}}}, {"lines": ["-- expire w1", "w1 session expires"], "violation": null, "workers": [{"id": "w1", "connected": false, "alive": false, "gen": 2, "pending": false, "published": []}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": true, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": true, "published": []}], "locks": {}}, {"lines": ["w1 g2 publishes [0, 1]"], "violation": "safety: w1 processes p0 without holding its lock", "workers": [{"id": "w1", "connected": false, "alive": false, "gen": 2, "pending": false, "published": [0, 1]}, {"id": "w2", "connected": true, "alive": true, "gen": 2, "pending": true, "published": []}, {"id": "w3", "connected": true, "alive": true, "gen": 2, "pending": true, "published": []}], "locks": {}}]}}, "results": [{"impl": "naive", "failures": {"liveness": 399, "safety": 765}, "minimal": {"safety": 2, "liveness": 3}}, {"impl": "fenced", "failures": {}, "minimal": {}}, {"impl": "fenced-no-disconnect-fence", "failures": {}, "minimal": {}}, {"impl": "fenced-no-pending-check", "failures": {}, "minimal": {}}, {"impl": "fenced-no-wait-check", "failures": {"liveness": 1045}, "minimal": {"liveness": 2}}, {"impl": "fenced-no-connection-checks", "failures": {"safety": 16}, "minimal": {"safety": 13}}]};
+const CASES = [
+  { key: "naive-safety", title: "Late rollback", sub: "naive · safety · 2 choices",
+    intro: "w2 starts an attempt, then a membership callback starts a newer one. Both append to one shared lock list. When the stale attempt finishes it releases everything in that list, including p2 that the newer attempt holds. Watch p2 turn red." },
+  { key: "no-connection-checks", title: "Commit after expiry", sub: "no connection checks · safety · 13 choices",
+    intro: "w1 holds both of its locks, then disconnects and its session expires, so the coordinator frees them. The attempt never rechecks the connection and publishes anyway. This failed in 16 of 2,000 runs." },
+  { key: "naive-liveness", title: "Stale-plan deadlock", sub: "naive · liveness · 3 choices",
+    intro: "w1's first attempt planned [0, 1, 2] while w2's session was expired. It holds p0 and p1 and waits forever for p2, which w2 owns again. w1's current attempt waits on p0. Nothing ever moves." },
+];
+const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+// Results chart, drawn to a 0–100% scale.
+(function () {
+  const notes = {
+    "naive": "shared lock list",
+    "fenced": "all guards",
+    "fenced-no-disconnect-fence": "",
+    "fenced-no-pending-check": "",
+    "fenced-no-wait-check": "",
+    "fenced-no-connection-checks": "",
+  };
+  let html = "";
+  for (const r of DATA.results) {
+    const s = r.failures.safety || 0, l = r.failures.liveness || 0, total = s + l;
+    html += `<div class="row"><div class="name">${esc(r.impl)}${notes[r.impl] ? `<small>${notes[r.impl]}</small>` : ""}</div>
+      <div class="track" role="img" aria-label="${total} of 2000 failed">
+        <div class="seg-safety" style="width:${s / 20}%"></div><div class="seg-liveness" style="width:${l / 20}%"></div></div>
+      <div class="count${total ? "" : " zero"}">${total ? total.toLocaleString() + " · " + (total / 20).toFixed(1) + "%" : "0"}</div></div>`;
+  }
+  html += `<div class="axis"><span></span><div class="ticks"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div><span></span></div>`;
+  document.getElementById("results").innerHTML = html;
+})();
+
+// Counterexample player.
+const $ = id => document.getElementById(id);
+let current = 0, step = 0, timer = null, frames = [];
+
+function buildFrames(c) {
+  const ids = c.frames.find(f => f.workers)?.workers.map(w => w.id) || [];
+  const startState = { workers: ids.map(id => ({ id, connected: true, alive: true, gen: 1, pending: true, published: [] })), locks: {} };
+  const out = [{ lines: [ids.join(", ") + " join"], ...startState, violation: null }];
+  let last = startState;
+  for (const f of c.frames) {
+    if (f.marker) { out.push({ ...last, lines: f.lines, violation: null, marker: true }); continue; }
+    out.push(f); last = f;
+  }
+  return out;
+}
+
+function renderTabs() {
+  $("tabs").innerHTML = CASES.map((c, i) =>
+    `<button class="tab" role="tab" type="button" aria-selected="${i === current}" data-i="${i}"><b>${c.title}</b><span>${c.sub}</span></button>`).join("");
+  $("tabs").querySelectorAll(".tab").forEach(b => b.onclick = () => select(+b.dataset.i));
+}
+
+function select(i) {
+  stop(); current = i; frames = buildFrames(DATA.cases[CASES[i].key]);
+  $("intro").textContent = CASES[i].intro;
+  $("scrub").max = frames.length - 1;
+  renderTabs(); renderLog(); show(frames.length - 1);
+}
+
+function renderLog() {
+  let html = "";
+  frames.forEach((f, i) => {
+    const lines = f.lines.length ? f.lines : ["(no further progress)"];
+    for (const line of lines) {
+      const adv = line.startsWith("--") ? " adv" : "";
+      html += `<li data-i="${i}" class="${adv}">${esc(line.replace(/^-- /, "▸ "))}</li>`;
+    }
+  });
+  $("log").innerHTML = html;
+  $("log").querySelectorAll("li").forEach(li => li.onclick = () => { stop(); show(+li.dataset.i); });
+}
+
+function show(i) {
+  step = Math.max(0, Math.min(frames.length - 1, i));
+  const f = frames[step];
+  $("scrub").value = step;
+  $("stepno").textContent = `${step + 1} / ${frames.length}`;
+  $("log").querySelectorAll("li").forEach(li => {
+    const j = +li.dataset.i;
+    li.classList.toggle("now", j === step);
+    li.classList.toggle("past", j < step);
+    li.classList.toggle("future", j > step);
+    li.classList.toggle("fail", j === step && !!f.violation);
+  });
+  const now = $("log").querySelector("li.now");
+  if (now) now.scrollIntoView({ block: "nearest" });
+
+  $("workers").innerHTML = f.workers.map(w => {
+    const chips = w.published.length ? w.published.map(p => {
+      const lock = f.locks[String(p)];
+      const ok = lock && lock.w === w.id;
+      return `<span class="chip${ok ? "" : " bad"}" title="${ok ? "lock held" : "no lock held"}">p${p}</span>`;
+    }).join("") : `<span class="none">processing nothing</span>`;
+    return `<div class="worker${w.connected ? "" : " off"}">
+      <div class="whead"><b>${w.id}</b><span>attempt g${w.gen}</span></div>
+      <div class="pills">
+        <span class="pill ${w.connected ? "on" : "off"}">${w.connected ? "connected" : "disconnected"}</span>
+        ${w.alive ? "" : `<span class="pill off">session expired</span>`}
+        ${w.pending ? `<span class="pill wait">change queued</span>` : ""}
+      </div>
+      <div class="chips">${chips}</div></div>`;
+  }).join("");
+
+  $("locks").innerHTML = [0, 1, 2, 3, 4, 5].map(p => {
+    const l = f.locks[String(p)];
+    return `<div class="lock${l ? " held" : ""}"><span class="p">p${p}</span><span class="o">${l ? l.w + " #" + l.token : "free"}</span></div>`;
+  }).join("");
+
+  const v = $("verdict");
+  if (f.violation) { v.className = "verdict bad"; v.textContent = "Violation · " + f.violation.replace(/^(safety|liveness): /, "$1: "); }
+  else if (step === frames.length - 1) { v.className = "verdict info"; v.textContent = DATA.cases[CASES[current].key].violation; }
+  else { v.className = "verdict info"; v.textContent = "Green chips are partitions a worker processes while holding the lock. Red means it is processing without one. Lock tokens identify which attempt holds a lock."; }
+}
+
+function stop() { clearInterval(timer); timer = null; $("play").textContent = "Play"; }
+function play() {
+  if (timer) return stop();
+  if (step >= frames.length - 1) show(0);
+  $("play").textContent = "Pause";
+  timer = setInterval(() => { if (step >= frames.length - 1) stop(); else show(step + 1); }, 900);
+}
+$("play").onclick = play;
+$("prev").onclick = () => { stop(); show(step - 1); };
+$("next").onclick = () => { stop(); show(step + 1); };
+$("scrub").oninput = e => { stop(); show(+e.target.value); };
+document.addEventListener("keydown", e => {
+  if (e.target.closest && e.target.closest("input")) return;
+  if (e.key === "ArrowRight") { stop(); show(step + 1); }
+  if (e.key === "ArrowLeft") { stop(); show(step - 1); }
+});
+select(0);
+</script>
